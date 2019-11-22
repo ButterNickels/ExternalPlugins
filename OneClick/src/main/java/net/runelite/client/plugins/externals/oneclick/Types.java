@@ -26,8 +26,12 @@ public enum Types
 	KARAMBWANS("Karambwans"),
 	DARK_ESSENCE("Dark Essence"),
 	BRUMA_ROOT("Bruma Roots"),
-	SEED_SET("Tithe Farm"),
 	TIARA("Tiara"),
+	TROUBLEBREWING("Trouble Brewing"),
+	TITHE_FARM("Tithe Farming"),
+	LEATHER("Dragon Hide Leather"),
+	SUPER_HEAT("SuperHeat"),
+	MEDPACK("Shayzien Medpack"),
 	NONE("None");
 
 	private String name;
