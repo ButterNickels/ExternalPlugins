@@ -4,7 +4,7 @@
  * All rights reserved.
  * Licensed under GPL3, see LICENSE for the full scope.
  */
-package net.runelite.client.plugins.externals.oneclick;
+package net.runelite.client.plugins.OneClick.src.main.java.net.runelite.client.plugins.externals.oneclick;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
@@ -144,6 +144,8 @@ public class OneClickPlugin extends Plugin
 		addSubscriptions();
 		type = config.getType();
 		enableImbue = config.isUsingImbue();
+		enableFertiliser = config.isUsingFertiliser();
+		enableHumidity = config.isUsinghHumidity();
 	}
 
 	@Override
@@ -178,6 +180,8 @@ public class OneClickPlugin extends Plugin
 		{
 			type = config.getType();
 			enableImbue = config.isUsingImbue();
+			enableFertiliser = config.isUsingFertiliser();
+			enableHumidity = config.isUsinghHumidity();
 		}
 	}
 
@@ -240,8 +244,10 @@ public class OneClickPlugin extends Plugin
 		{
 			return;
 		}
+		final MenuEntry secondEntry = event.getFirstEntry();
 
 		final int widgetId = firstEntry.getParam1();
+		final int swidgetId = secondEntry.getParam1();
 
 		if (widgetId == WidgetInfo.INVENTORY.getId() && type == Types.HIGH_ALCH)
 		{
