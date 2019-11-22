@@ -33,4 +33,17 @@ public interface OneClickConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+			keyName = "isUsingFertiliser",
+			name = "Use Gricoller's fertiliser",
+			description = "If you want to use Gricoller's fertiliser in Tithe Farm"
+	)
+	default boolean isUsingFertiliser() { return false; }
+
+	@ConfigItem(
+			keyName = "isUsingHumidity",
+			name = "Use Humidity",
+			description = "Use Humidity on empty watering can for Tithe farm"
+	)
+	default boolean isUsinghHumidity() { return false; }
 }

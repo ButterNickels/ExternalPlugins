@@ -38,6 +38,7 @@ import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.api.widgets.WidgetItem;
+import net.runelite.client.menus.MenuManager;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.events.ConfigChanged;
@@ -83,13 +84,25 @@ public class OneClickPlugin extends Plugin
 		ItemID.RAURG_BONES, ItemID.HYDRA_BONES, ItemID.DAGANNOTH_BONES, ItemID.OURG_BONES, ItemID.SUPERIOR_DRAGON_BONES,
 		ItemID.WYVERN_BONES
 	);
-	private static final Set<Integer> SEED_SET = ImmutableSet.of(
-		ItemID.GOLOVANOVA_SEED, ItemID.BOLOGANO_SEED, ItemID.LOGAVANO_SEED
-	);
 	private static final Set<String> BIRD_HOUSES_NAMES = ImmutableSet.of(
 		"<col=ffff>Bird house (empty)", "<col=ffff>Oak birdhouse (empty)", "<col=ffff>Willow birdhouse (empty)",
 		"<col=ffff>Teak birdhouse (empty)", "<col=ffff>Maple birdhouse (empty)", "<col=ffff>Mahogany birdhouse (empty)",
 		"<col=ffff>Yew birdhouse (empty)", "<col=ffff>Magic birdhouse (empty)", "<col=ffff>Redwood birdhouse (empty)"
+	);
+	private static final Set<Integer> DRAGON_LEATHER = ImmutableSet.of(
+			ItemID.GREEN_DRAGON_LEATHER, ItemID.BLUE_DRAGON_LEATHER, ItemID.RED_DRAGON_LEATHER, ItemID.BLACK_DRAGON_LEATHER
+	);
+	private static final Set<Integer> NOTED_BONES = ImmutableSet.of(
+			ItemID.NOTED_DRAGON_BONES
+	);
+	private static final Set<Integer> TB_BUCKETS = ImmutableSet.of(
+			ItemID.BUCKET, ItemID.BUCKET_OF_WATER
+	);
+	private static final Set<Integer> SH_MEDPACK = ImmutableSet.of(
+			ItemID.SHAYZIEN_MEDPACK
+	);
+	private static final Set<Integer> TH_FARM = ImmutableSet.of(
+			ItemID.GOLOVANOVA_SEED, ItemID.BOLOGANO_SEED, ItemID.LOGAVANO_SEED
 	);
 	private static final String MAGIC_IMBUE_EXPIRED_MESSAGE = "Your Magic Imbue charge has ended.";
 	private static final String MAGIC_IMBUE_MESSAGE = "You are charged to combine runes!";
@@ -100,16 +113,23 @@ public class OneClickPlugin extends Plugin
 	private OneClickConfig config;
 	@Inject
 	private EventBus eventBus;
+	@Inject
+	private MenuManager menuManager;
 
 	private final Map<Integer, String> targetMap = new HashMap<>();
 
 	private AlchItem alchItem;
+	private SuperHeatItem heatItem;
 	private GameObject cannon;
 	private Types type = Types.NONE;
 	private boolean cannonFiring;
 	private boolean enableImbue;
 	private boolean imbue;
 	private boolean tick;
+	private boolean enableFertiliser;
+	private boolean enableHumidity;
+	private boolean fertiliser;
+	private boolean humidity;
 	private int prevCannonAnimation = 514;
 
 	@Provides
@@ -271,6 +291,58 @@ public class OneClickPlugin extends Plugin
 			setHighAlchItem.setParam1(widgetId);
 			setHighAlchItem.setForceLeftClick(false);
 			menuList[1] = setHighAlchItem;
+			event.setMenuEntries(menuList);
+			event.setModified();
+		}
+
+		if (swidgetId == WidgetInfo.INVENTORY.getId() && type == Types.SUPER_HEAT )
+		{
+			final Widget spell = client.getWidget(WidgetInfo.SPELL_SUPERHEAT_ITEM);
+
+			if (spell == null)
+			{
+				return;
+			}
+
+			if (spell.getSpriteId() != SpriteID.SPELL_SUPERHEAT_ITEM ||
+					spell.getSpriteId() == SpriteID.SPELL_SUPERHEAT_ITEM_DISABLED ||
+					client.getBoostedSkillLevel(Skill.MAGIC) < 43 ||
+					client.getVar(Varbits.SPELLBOOK) != 0)
+			{
+				heatItem = null;
+				return;
+			}
+
+			final int oreId = secondEntry.getIdentifier();
+
+			if (oreId == -1)
+			{
+				return;
+			}
+
+			final MenuEntry[] menuList = new MenuEntry[event.getMenuEntries().length + 1];
+
+			for (int i = event.getMenuEntries().length - 1; i >= 0; i--)
+			{
+				if (i == 0)
+				{
+					menuList[i] = event.getMenuEntries()[i];
+				}
+				else
+				{
+					menuList[i + 1] = event.getMenuEntries()[i];
+				}
+			}
+
+			final MenuEntry setHeatItem = new MenuEntry();
+			final boolean set = heatItem != null && heatItem.getId() == secondEntry.getIdentifier();
+			setHeatItem.setOption(set ? "Unset" : "Set");
+			setHeatItem.setTarget("<col=00ff00>Superheat Item <col=ffffff> -> " + secondEntry.getTarget());
+			setHeatItem.setIdentifier(set ? -1 : secondEntry.getIdentifier());
+			setHeatItem.setOpcode(MenuOpcode.RUNELITE.getId());
+			setHeatItem.setParam1(swidgetId);
+			setHeatItem.setForceLeftClick(false);
+			menuList[1] = setHeatItem;
 			event.setMenuEntries(menuList);
 			event.setModified();
 		}
@@ -442,6 +514,17 @@ public class OneClickPlugin extends Plugin
 				}
 				break;
 			case BONES:
+				if (opcode == MenuOpcode.NPC_FIRST_OPTION.getId() && event.getOption().toLowerCase().contains("talk-to") && event.getTarget().toLowerCase().contains("phials"))
+				{
+					if (findItem(NOTED_BONES).getLeft() == -1)
+					{
+						return;
+					}
+					event.setOption("Use");
+					event.setTarget("<col=ff9040>Dragon Bones<col=ffffff> -> <col=ffff>Phials" );
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
 				if (opcode == MenuOpcode.GAME_OBJECT_FIRST_OPTION.getId() && event.getOption().toLowerCase().contains("pray") && event.getTarget().toLowerCase().contains("altar"))
 				{
 					if (findItem(BONE_SET).getLeft() == -1)
@@ -452,26 +535,6 @@ public class OneClickPlugin extends Plugin
 					event.setTarget("<col=ff9040>Bones<col=ffffff> -> " + event.getTarget());
 					event.setForceLeftClick(true);
 					event.setModified();
-				}
-				break;
-			case SEED_SET:
-				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() && event.getTarget().toLowerCase().contains("tithe"))
-				{
-					if (findItem(SEED_SET).getLeft() == -1)
-					{
-						return;
-					}
-
-					event.setOption("Use");
-					event.setTarget("<col=ff9040>Seed<col=ffffff> -> " + event.getTarget());
-					event.setForceLeftClick(true);
-					event.setModified();
-				}
-				else if (event.getOpcode() == MenuOpcode.WALK.getId())
-				{
-					MenuEntry menuEntry = client.getLeftClickMenuEntry();
-					menuEntry.setOpcode(MenuOpcode.WALK.getId() + MENU_ACTION_DEPRIORITIZE_OFFSET);
-					client.setLeftClickMenuEntry(menuEntry);
 				}
 				break;
 			case KARAMBWANS:
@@ -512,6 +575,108 @@ public class OneClickPlugin extends Plugin
 					event.setTarget("<col=ff9040>Tiara<col=ffffff> -> <col=ffff>Altar");
 					event.setForceLeftClick(true);
 					event.setModified();
+				}
+				break;
+			case LEATHER:
+				if (opcode == MenuOpcode.ITEM_USE.getId() && DRAGON_LEATHER.contains(id))
+				{
+					if (findItem(ItemID.NEEDLE).getLeft() == -1) {
+						return;
+					}
+					event.setTarget("<col=ff9040>Needle<col=ffffff> -> " + targetMap.get(id));
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
+				break;
+			case SUPER_HEAT:
+				if (opcode == MenuOpcode.WIDGET_TYPE_2.getId() && heatItem != null && event.getOption().equals("Cast") && event.getTarget().equals("<col=00ff00>Superheat Item</col>"))
+				{
+					event.setOption("Cast");
+					event.setTarget("<col=00ff00>Superheat Item</col><col=ffffff> -> " + heatItem.getName());
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
+				break;
+			case MEDPACK:
+				if (opcode == MenuOpcode.NPC_FIRST_OPTION.getId() && event.getOption().toLowerCase().contains("talk-to") && event.getTarget().toLowerCase().contains("wounded soldier"))
+				{
+					if (findItem(SH_MEDPACK).getLeft() == -1)
+					{
+						return;
+					}
+					event.setOption("Use");
+					event.setTarget("<col=ff9040>Shayzien medpack<col=ffffff> -> <col=ffff>Wounded soldier" );
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
+				break;
+			case TROUBLEBREWING:
+				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() && event.getTarget().toLowerCase().contains("water pump"))
+				{
+					if (findItem(TB_BUCKETS).getLeft() == -1)
+					{
+						return;
+					}
+					event.setOption("Use");
+					event.setTarget("<col=ff9040>Bucket<col=ffffff> -> " + event.getTarget());
+					menuManager.addPriorityEntry("Use");
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
+				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() && event.getTarget().toLowerCase().contains("hopper"))
+				{
+					if (findItem(TB_BUCKETS).getLeft() == -1)
+					{
+						return;
+					}
+					event.setOption("Use");
+					event.setTarget("<col=ff9040>Bucket<col=ffffff> -> " + event.getTarget());
+					menuManager.addPriorityEntry("Use");
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
+				break;
+			case TITHE_FARM:
+				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() && event.getTarget().toLowerCase().contains("tithe patch"))
+				{
+					if (findItem(TH_FARM).getLeft() == -1)
+					{
+						return;
+					}
+					event.setOption("Use");
+					event.setTarget("<col=ff9040>Seed<col=ffffff> -> " + event.getTarget());
+					menuManager.addPriorityEntry("Use");
+					event.setForceLeftClick(true);
+					event.setModified();
+				}
+				if (!humidity && enableHumidity)
+				{
+					if (opcode == MenuOpcode.ITEM_USE.getId() && event.getTarget().toLowerCase().contains("watering can"))
+					{
+						if (findItem(ItemID.ASTRAL_RUNE).getLeft() == -1)
+						{
+							return;
+						}
+						event.setOption("Use");
+						event.setTarget("<col=ff9040>Humidify<col=ffffff> -> <col=ffff>Yourself");
+						event.setForceLeftClick(true);
+						event.setModified();
+					}
+				}
+				if (!fertiliser && enableFertiliser)
+				{
+					if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() && event.getTarget().toLowerCase().contains("bologano seedling"))
+					{
+						if (findItem(ItemID.GRICOLLERS_FERTILISER).getLeft() == -1)
+						{
+							return;
+						}
+						event.setOption("Use");
+						event.setTarget("<col=ff9040>Gricoller's fertiliser<col=ffffff> -> <col=ffff>Plant");
+						menuManager.addPriorityEntry("Water");
+						event.setForceLeftClick(true);
+						event.setModified();
+					}
 				}
 				break;
 		}
@@ -665,20 +830,18 @@ public class OneClickPlugin extends Plugin
 				}
 				break;
 			case BONES:
-				if (opcode == MenuOpcode.GAME_OBJECT_FIRST_OPTION.getId() &&
-					event.getTarget().contains("<col=ff9040>Bones<col=ffffff> -> ") && target.toLowerCase().contains("altar"))
+				if (opcode == MenuOpcode.NPC_FIRST_OPTION.getId() &&
+						event.getTarget().contains("<col=ff9040>Dragon Bones<col=ffffff> -> ") && target.toLowerCase().contains("phials"))
 				{
-					if (updateSelectedItem(BONE_SET))
+					if (updateSelectedItem(NOTED_BONES))
 					{
-						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_NPC.getId());
 					}
 				}
-				break;
-			case SEED_SET:
-				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() &&
-					event.getTarget().contains("<col=ff9040>Seed<col=ffffff> -> ") && target.toLowerCase().contains("tithe"))
+				if (opcode == MenuOpcode.GAME_OBJECT_FIRST_OPTION.getId() &&
+						event.getTarget().contains("<col=ff9040>Bones<col=ffffff> -> ") && target.toLowerCase().contains("altar"))
 				{
-					if (updateSelectedItem(SEED_SET))
+					if (updateSelectedItem(BONE_SET))
 					{
 						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
 					}
@@ -708,6 +871,93 @@ public class OneClickPlugin extends Plugin
 						target.equals("<col=ff9040>Tiara<col=ffffff> -> <col=ffff>Altar"))
 				{
 					if (updateSelectedItem(ItemID.TIARA))
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
+					}
+				}
+				break;
+			case LEATHER:
+				if (opcode == MenuOpcode.ITEM_USE.getId() && target.contains("<col=ff9040>Needle<col=ffffff> -> "))
+				{
+					if (updateSelectedItem(ItemID.NEEDLE))
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_WIDGET_ITEM.getId());
+					}
+				}
+				break;
+			case SUPER_HEAT:
+				if (opcode == MenuOpcode.WIDGET_TYPE_2.getId() && event.getOption().equals("Cast") && target.contains("<col=00ff00>Superheat Item</col><col=ffffff> -> "))
+				{
+					final Pair<Integer, Integer> pair = findItem(heatItem.getId());
+					if (pair.getLeft() != -1)
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_WIDGET.getId());
+						event.setIdentifier(pair.getLeft());
+						event.setParam0(pair.getRight());
+						event.setParam1(WidgetInfo.INVENTORY.getId());
+						client.setSelectedSpellName("<col=00ff00>Superheat Item</col><col=ffffff>");
+						client.setSelectedSpellWidget(WidgetInfo.SPELL_SUPERHEAT_ITEM.getId());
+					}
+				}
+				else if (opcode == MenuOpcode.RUNELITE.getId() && event.getIdentifier() == -1)
+				{
+					heatItem = null;
+				}
+				else if (type == Types.SUPER_HEAT && opcode == MenuOpcode.RUNELITE.getId())
+				{
+					final String itemName = event.getTarget().split("<col=00ff00>Superheat Item <col=ffffff> -> ")[1];
+					heatItem = new SuperHeatItem(itemName, event.getIdentifier());
+				}
+				break;
+			case MEDPACK:
+				if (opcode == MenuOpcode.NPC_FIRST_OPTION.getId() &&
+						event.getTarget().contains("<col=ff9040>Shayzien medpack<col=ffffff> -> ") && target.toLowerCase().contains("wounded soldier"))
+				{
+					if (updateSelectedItem(SH_MEDPACK))
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_NPC.getId());
+					}
+				}
+				break;
+			case TROUBLEBREWING:
+				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() &&
+						event.getTarget().contains("<col=ff9040>Bucket<col=ffffff> -> ") && target.toLowerCase().contains("water pump"))
+				{
+					if (updateSelectedItem(TB_BUCKETS))
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
+					}
+				}
+				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() &&
+						event.getTarget().contains("<col=ff9040>Bucket<col=ffffff> -> ") && target.toLowerCase().contains("hopper"))
+				{
+					if (updateSelectedItem(TB_BUCKETS))
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
+					}
+				}
+				break;
+			case TITHE_FARM:
+				if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() &&
+						event.getTarget().contains("<col=ff9040>Seed<col=ffffff> -> ") && target.toLowerCase().contains("tithe patch"))
+				{
+					if (updateSelectedItem(TH_FARM))
+					{
+						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
+					}
+				}
+				else if (opcode == MenuOpcode.ITEM_USE.getId() &&
+						target.equals("<col=ff9040>Humidify<col=ffffff> -> <col=ffff>Yourself"))
+				{
+					event.setIdentifier(1);
+					event.setOpcode(MenuOpcode.WIDGET_DEFAULT.getId());
+					event.setParam0(-1);
+					event.setParam1(WidgetInfo.SPELL_HUMIDIFY.getId());
+				}
+				else if (opcode == MenuOpcode.EXAMINE_OBJECT.getId() &&
+						event.getTarget().contains("<col=ff9040>Gricoller's fertiliser<col=ffffff> -> <col=ffff>Plant"))
+				{
+					if (updateSelectedItem(ItemID.GRICOLLERS_FERTILISER))
 					{
 						event.setOpcode(MenuOpcode.ITEM_USE_ON_GAME_OBJECT.getId());
 					}
